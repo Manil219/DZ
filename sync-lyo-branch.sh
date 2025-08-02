@@ -1,98 +1,61 @@
 #!/bin/bash
 
-# Script de synchronisation de la branche LYO
-# Application lovable.dev - Port 8080
+# Script de synchronisation pour la branche LYO
+# Synchronise avec la branche main et redémarre l'application
 
-echo "🚀 Script de synchronisation de la branche LYO"
-echo "=============================================="
+echo "🔄 Début de la synchronisation de la branche LYO..."
 
-# Vérifier si nous sommes dans un dépôt Git
-if [ ! -d ".git" ]; then
-    echo "❌ Erreur: Ce dossier n'est pas un dépôt Git"
-    exit 1
+# Sauvegarder les modifications locales si elles existent
+if ! git diff-index --quiet HEAD --; then
+    echo "📝 Sauvegarde des modifications locales..."
+    git stash push -m "Sauvegarde avant synchronisation LYO"
+    STASH_CREATED=true
 fi
 
-# Sauvegarder la branche actuelle
-CURRENT_BRANCH=$(git branch --show-current)
-echo "📍 Branche actuelle: $CURRENT_BRANCH"
+# Basculer sur la branche main
+echo "🔄 Basculement sur la branche main..."
+git checkout main
 
-# Fonction pour créer la branche LYO si elle n'existe pas
-create_lyo_branch() {
-    echo "🔧 Création de la branche LYO..."
-    git checkout main
-    git pull origin main
-    git checkout -b LYO
-    echo "✅ Branche LYO créée avec succès"
-}
+# Synchroniser avec le repository distant
+echo "🔄 Synchronisation avec origin/main..."
+git pull origin main
 
-# Vérifier si la branche LYO existe
-if git branch | grep -q "LYO"; then
-    echo "✅ La branche LYO existe déjà"
-    
-    # Synchroniser avec main
-    echo "🔄 Synchronisation avec la branche main..."
-    git checkout main
-    git pull origin main
-    
-    echo "🔄 Basculement vers la branche LYO..."
-    git checkout LYO
-    
-    echo "🔄 Merge des modifications de main vers LYO..."
-    git merge main --no-ff -m "Synchronisation avec main - $(date)"
-    
-else
-    echo "⚠️  La branche LYO n'existe pas"
-    create_lyo_branch
-fi
+# Basculer sur la branche LYO
+echo "🔄 Basculement sur la branche LYO..."
+git checkout LYO
 
-# Vérifier les dossiers critiques
-echo "🔍 Vérification des dossiers critiques..."
-CRITICAL_DIRS=("src" "public" "supabase" "scripts")
+# Fusionner les changements de main dans LYO
+echo "🔄 Fusion des changements de main dans LYO..."
+git merge main
 
-for dir in "${CRITICAL_DIRS[@]}"; do
-    if [ -d "$dir" ]; then
-        echo "✅ Dossier $dir: OK"
-    else
-        echo "⚠️  Dossier $dir: MANQUANT"
-    fi
-done
-
-# Vérifier les fichiers de configuration
-echo "🔍 Vérification des fichiers de configuration..."
-CONFIG_FILES=("package.json" "vite.config.ts" "tailwind.config.ts" "tsconfig.json")
-
-for file in "${CONFIG_FILES[@]}"; do
-    if [ -f "$file" ]; then
-        echo "✅ Fichier $file: OK"
-    else
-        echo "⚠️  Fichier $file: MANQUANT"
-    fi
-done
-
-# Vérifier la configuration du port 8080
-echo "🔍 Vérification de la configuration du port 8080..."
-if grep -q "port: 8080" vite.config.ts; then
-    echo "✅ Port 8080 configuré dans vite.config.ts"
-else
-    echo "⚠️  Configuration du port 8080 non trouvée"
+# Restaurer les modifications locales si elles existaient
+if [ "$STASH_CREATED" = true ]; then
+    echo "📝 Restauration des modifications locales..."
+    git stash pop
 fi
 
 # Installer les dépendances si nécessaire
-if [ ! -d "node_modules" ]; then
-    echo "📦 Installation des dépendances..."
-    npm install
+echo "📦 Vérification des dépendances..."
+npm install
+
+# Arrêter le serveur de développement s'il tourne
+echo "🛑 Arrêt du serveur de développement..."
+pkill -f "vite" || true
+
+# Redémarrer l'application
+echo "🚀 Redémarrage de l'application sur le port 8080..."
+npm run dev &
+
+# Attendre que l'application démarre
+echo "⏳ Attente du démarrage de l'application..."
+sleep 5
+
+# Vérifier que l'application fonctionne
+if curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 | grep -q "200"; then
+    echo "✅ Synchronisation réussie !"
+    echo "🌐 Application accessible sur: http://localhost:8080"
+    echo "📋 Branche actuelle: $(git branch --show-current)"
+else
+    echo "❌ Erreur lors du démarrage de l'application"
+    exit 1
 fi
-
-# Afficher le statut final
-echo ""
-echo "📊 Statut de synchronisation:"
-echo "=============================="
-git status
-
-echo ""
-echo "🎯 Branche LYO synchronisée avec succès!"
-echo "🌐 Pour démarrer l'application sur le port 8080:"
-echo "   npm run dev"
-echo ""
-echo "🔧 Pour pousser la branche LYO vers le dépôt distant:"
-echo "   git push origin LYO"
